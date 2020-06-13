@@ -1,6 +1,7 @@
 use byteorder::{ByteOrder, NetworkEndian};
 use etherparse::{SlicedPacket, TransportSlice};
 use pcap::Device;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 // struct DnsQuestion {
 //     qname_raw: Vec<u8>,
@@ -79,6 +80,7 @@ fn parse_dns(payload: &[u8]) {
                 break;
             } else if qname_field_len == 192 {
                 payload_offset += 1;
+                print!("PTR");
                 break;
             }
 
@@ -90,10 +92,8 @@ fn parse_dns(payload: &[u8]) {
         }
 
         let mut payload_offset_end = payload_offset + 2;
-        print!(
-            " type: {}",
-            NetworkEndian::read_u16(&payload[payload_offset..payload_offset_end])
-        );
+        let rtype = NetworkEndian::read_u16(&payload[payload_offset..payload_offset_end]);
+        print!(" type: {}", rtype);
         payload_offset = payload_offset_end;
 
         payload_offset_end += 2;
@@ -116,10 +116,10 @@ fn parse_dns(payload: &[u8]) {
         payload_offset = payload_offset_end;
 
         payload_offset_end += rdlen as usize;
-        print!(
-            " data: {:?}",
-            &payload[payload_offset..payload_offset_end]
-        );
+        if rtype == 1 || rtype == 28 {  // A, AAAA
+            print!(" data: {:?}", &payload[payload_offset..payload_offset_end]);
+        }
+        payload_offset = payload_offset_end;
 
         dns_answers += 1;
         println!(";");
