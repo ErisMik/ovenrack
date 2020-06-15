@@ -10,39 +10,39 @@ pub enum RData {
 
 #[derive(Debug)]
 pub struct DnsAnswerSection {
-    name: Vec<u8>,
-    atype: u16,
-    class: u16,
-    ttl: u32,
-    rdlength: u16,
-    rdata: RData,
+    pub name: Vec<u8>,
+    pub atype: u16,
+    pub class: u16,
+    pub ttl: u32,
+    pub rdlength: u16,
+    pub rdata: RData,
 }
 
 #[derive(Debug)]
 pub struct DnsQuestionSection {
-    qname: Vec<u8>,
-    qtype: u16,
-    qclass: u16,
+    pub qname: Vec<u8>,
+    pub qtype: u16,
+    pub qclass: u16,
 }
 
 #[derive(Debug)]
 pub struct DnsHeader {
-    id: u16,
-    flags: u16,
-    qdcount: u16,
-    ancount: u16,
-    nscount: u16,
-    arcount: u16,
+    pub id: u16,
+    pub flags: u16,
+    pub qdcount: u16,
+    pub ancount: u16,
+    pub nscount: u16,
+    pub arcount: u16,
 }
 const DNS_HEADER_LEN: usize = 12;
 
 #[derive(Debug)]
 pub struct DnsPacket {
-    header: DnsHeader,
-    question_section: Vec<DnsQuestionSection>,
-    answer_section: Vec<DnsAnswerSection>,
-    authority_section: Vec<DnsAnswerSection>,
-    additional_section: Vec<DnsAnswerSection>,
+    pub header: DnsHeader,
+    pub question_section: Vec<DnsQuestionSection>,
+    pub answer_section: Vec<DnsAnswerSection>,
+    pub authority_section: Vec<DnsAnswerSection>,
+    pub additional_section: Vec<DnsAnswerSection>,
 }
 
 impl RData {
@@ -245,7 +245,7 @@ impl DnsQuestionSection {
         return (dns_question_section, bytes_read);
     }
 
-    fn name_string(&self) -> String {
+    pub fn name_string(&self) -> String {
         let mut qname: String = String::from("");
 
         let mut offset = 0;
