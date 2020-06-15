@@ -4,7 +4,20 @@ mod dns;
 
 fn parse_dns(payload: &[u8]) {
     let dns_packet = dns::DnsPacket::from_slice(payload);
-    println!("{:?}", dns_packet);
+    let dns_repacked = dns_packet.bytes();
+
+    if dns_repacked.len() != payload.len() {
+        println!("Len differs :(")
+    } else {
+        for (i, byteptr) in dns_repacked.iter().enumerate() {
+            if *byteptr == payload[i] {
+                print!(".")
+            } else {
+                print!("x")
+            }
+        }
+        println!(" Done")
+    }
 }
 
 fn main() {

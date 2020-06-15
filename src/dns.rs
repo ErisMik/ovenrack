@@ -11,7 +11,7 @@ pub enum RData {
 #[derive(Debug)]
 pub struct DnsAnswerSection {
     name: Vec<u8>,
-    r#type: u16,
+    atype: u16,
     class: u16,
     ttl: u32,
     rdlength: u16,
@@ -96,6 +96,26 @@ impl RData {
             },
         }
     }
+
+    fn bytes(&self) -> Vec<u8> {
+        let mut result: Vec<u8> = Vec::new();
+
+        match self {
+            RData::AData { ip } => {
+                for byteptr in ip.octets().iter() {
+                    result.push(*byteptr);
+                }
+                return result;
+            }
+            RData::AAAAData { ip } => {
+                for byteptr in ip.octets().iter() {
+                    result.push(*byteptr);
+                }
+                return result;
+            }
+            RData::OtherData { data } => return data.to_vec(),
+        }
+    }
 }
 
 impl DnsAnswerSection {
@@ -150,7 +170,7 @@ impl DnsAnswerSection {
 
         let dns_answer_section = DnsAnswerSection {
             name: aname,
-            r#type: atype,
+            atype: atype,
             class: aclass,
             ttl: attl,
             rdlength: rdlength,
@@ -159,6 +179,30 @@ impl DnsAnswerSection {
         let bytes_read = offset;
 
         return (dns_answer_section, bytes_read);
+    }
+
+    fn bytes(&self) -> Vec<u8> {
+        let mut result: Vec<u8> = Vec::new();
+        let mut u16buf = [0; 2];
+        let mut u32buf = [0; 4];
+
+        result.extend(self.name.iter());
+
+        NetworkEndian::write_u16(&mut u16buf, self.atype);
+        result.extend_from_slice(&u16buf);
+
+        NetworkEndian::write_u16(&mut u16buf, self.class);
+        result.extend_from_slice(&u16buf);
+
+        NetworkEndian::write_u32(&mut u32buf, self.ttl);
+        result.extend_from_slice(&u32buf);
+
+        NetworkEndian::write_u16(&mut u16buf, self.rdlength);
+        result.extend_from_slice(&u16buf);
+
+        result.extend(self.rdata.bytes().iter());
+
+        return result;
     }
 }
 
@@ -223,6 +267,21 @@ impl DnsQuestionSection {
 
         return qname;
     }
+
+    fn bytes(&self) -> Vec<u8> {
+        let mut result: Vec<u8> = Vec::new();
+        let mut u16buf = [0; 2];
+
+        result.extend(self.qname.iter());
+
+        NetworkEndian::write_u16(&mut u16buf, self.qtype);
+        result.extend_from_slice(&u16buf);
+
+        NetworkEndian::write_u16(&mut u16buf, self.qclass);
+        result.extend_from_slice(&u16buf);
+
+        return result;
+    }
 }
 
 impl DnsHeader {
@@ -239,6 +298,31 @@ impl DnsHeader {
         let bytes_read = DNS_HEADER_LEN;
 
         return (dns_header, bytes_read);
+    }
+
+    fn bytes(&self) -> Vec<u8> {
+        let mut result: Vec<u8> = Vec::new();
+        let mut u16buf = [0; 2];
+
+        NetworkEndian::write_u16(&mut u16buf, self.id);
+        result.extend_from_slice(&u16buf);
+
+        NetworkEndian::write_u16(&mut u16buf, self.flags);
+        result.extend_from_slice(&u16buf);
+
+        NetworkEndian::write_u16(&mut u16buf, self.qdcount);
+        result.extend_from_slice(&u16buf);
+
+        NetworkEndian::write_u16(&mut u16buf, self.ancount);
+        result.extend_from_slice(&u16buf);
+
+        NetworkEndian::write_u16(&mut u16buf, self.nscount);
+        result.extend_from_slice(&u16buf);
+
+        NetworkEndian::write_u16(&mut u16buf, self.arcount);
+        result.extend_from_slice(&u16buf);
+
+        return result;
     }
 }
 
@@ -285,5 +369,29 @@ impl DnsPacket {
             authority_section: authorities,
             additional_section: additionals,
         };
+    }
+
+    pub fn bytes(&self) -> Vec<u8> {
+        let mut result: Vec<u8> = Vec::new();
+
+        result.extend(self.header.bytes().iter());
+
+        for question in &self.question_section {
+            result.extend(question.bytes().iter());
+        }
+
+        for answer in &self.answer_section {
+            result.extend(answer.bytes().iter());
+        }
+
+        for authority in &self.authority_section {
+            result.extend(authority.bytes().iter());
+        }
+
+        for additional in &self.additional_section {
+            result.extend(additional.bytes().iter());
+        }
+
+        return result;
     }
 }
