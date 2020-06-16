@@ -14,12 +14,14 @@ mod dns;
 fn parse_dns(payload: &[u8]) -> dns::DnsPacket {
     let dns_packet = dns::DnsPacket::from_slice(payload);
     println!(
-        "DNS id: {}, NAME: {}, TYPE {}, Q:{}, A:{}",
+        "DNS id: {}, NAME: {}, TYPE {}, Q:{}, A:{}, NS:{}, AR:{}",
         dns_packet.header.id,
         dns_packet.question_section[0].name_string(),
         dns_packet.question_section[0].qtype,
-        dns_packet.question_section.len(),
-        dns_packet.answer_section.len()
+        dns_packet.header.qdcount,
+        dns_packet.header.ancount,
+        dns_packet.header.nscount,
+        dns_packet.header.arcount,
     );
     return dns_packet;
 }
@@ -92,18 +94,13 @@ fn main() {
                                         || transportheader.source_port() == port
                                     {
                                         let mut v = cap_clone.lock().unwrap();
-                                        v.push_back(parse_dns(slicedpacket.payload));
+                                        let dns_packet = parse_dns(slicedpacket.payload);
+                                        if dns_packet.header.isrequest() == true {
+                                            v.push_back(dns_packet);
+                                        }
                                     }
                                 }
-                                TransportSlice::Tcp(_) => {} // Currently broken :(
-                                                             // TransportSlice::Tcp(transportheader) => {
-                                                             //     if transportheader.destination_port() == port
-                                                             //         || transportheader.source_port() == port
-                                                             //     {
-                                                             //         let mut v = cap_clone.lock().unwrap();
-                                                             //         v.push(parse_dns(slicedpacket.payload));
-                                                             //     }
-                                                             // }
+                                TransportSlice::Tcp(_) => {}
                             };
                         }
                     }
@@ -119,53 +116,54 @@ fn main() {
 
             while v.len() > 0 {
                 let mut dns_packet = v.pop_front().unwrap();
-                if dns_packet.header.ancount == 0 {
-                    print!("{} --> ", dns_packet.header.id);
-                    dns_packet.header.id = dns_packet.header.id.wrapping_add(1);
-                    println!("{}", dns_packet.header.id);
 
-                    let mut dns_payload: Vec<u8> = Vec::new();
-                    let dns_len_u16: u16 = dns_packet.bytes().len() as u16;
-                    let mut u16buf = [0; 2];
-                    NetworkEndian::write_u16(&mut u16buf, dns_len_u16);
-                    dns_payload.extend_from_slice(&u16buf);
-                    dns_payload.extend(dns_packet.bytes().iter());
+                print!("{} --> ", dns_packet.header.id);
+                dns_packet.header.id = dns_packet.header.id.wrapping_add(1);
+                println!("{}", dns_packet.header.id);
 
-                    let mut socket = std::net::TcpStream::connect("45.33.36.222:853").unwrap();
-                    let mut config = rustls::ClientConfig::new();
-                    config
-                        .root_store
-                        .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-                    let arc = std::sync::Arc::new(config);
-                    let dns_name =
-                        webpki::DNSNameRef::try_from_ascii_str("dns.ericmikulin.ca").unwrap();
-                    let mut client = rustls::ClientSession::new(&arc, dns_name);
-                    let mut stream = rustls::Stream::new(&mut client, &mut socket);
+                let mut dns_payload: Vec<u8> = Vec::new();
+                let dns_len_u16: u16 = dns_packet.bytes().len() as u16;
+                let mut u16buf = [0; 2];
+                NetworkEndian::write_u16(&mut u16buf, dns_len_u16);
+                dns_payload.extend_from_slice(&u16buf);
+                dns_payload.extend(dns_packet.bytes().iter());
 
-                    stream.write(&dns_payload).unwrap();
+                let mut socket = std::net::TcpStream::connect("45.33.36.222:853").unwrap();
+                let mut config = rustls::ClientConfig::new();
+                config
+                    .root_store
+                    .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+                let arc = std::sync::Arc::new(config);
+                let dns_name =
+                    webpki::DNSNameRef::try_from_ascii_str("dns.ericmikulin.ca").unwrap();
+                let mut client = rustls::ClientSession::new(&arc, dns_name);
+                let mut stream = rustls::Stream::new(&mut client, &mut socket);
 
-                    let mut len_buff: [u8; 2] = [0; 2];
-                    match stream.read(&mut len_buff) {
-                        Ok(_) => {
-                            let reply_len = NetworkEndian::read_u16(&len_buff);
+                stream.write(&dns_payload).unwrap();
 
-                            let mut dns_vec: Vec<u8> = Vec::new();
-                            let mut dns_buff: [u8; 1] = [0; 1];
-                            for _i in 0..reply_len {
-                                if let Err(e) = stream.read(&mut dns_buff) {
-                                    println!("Error fwding: {}", e);
-                                    continue;
-                                } else {
-                                    dns_vec.extend_from_slice(&dns_buff);
-                                }
+                let mut len_buff: [u8; 2] = [0; 2];
+                match stream.read(&mut len_buff) {
+                    Ok(_) => {
+                        let reply_len = NetworkEndian::read_u16(&len_buff);
+
+                        let mut dns_vec: Vec<u8> = Vec::new();
+                        let mut dns_buff: [u8; 1] = [0; 1];
+                        for _i in 0..reply_len {
+                            if let Err(e) = stream.read(&mut dns_buff) {
+                                println!("Error fwding: {}", e);
+                                println!("{:?}", dns_packet);
+                                continue;
+                            } else {
+                                dns_vec.extend_from_slice(&dns_buff);
                             }
+                        }
 
-                            parse_dns(&dns_vec);
-                        }
-                        Err(e) => {
-                            println!("Error fwding: {}", e);
-                            continue;
-                        }
+                        parse_dns(&dns_vec);
+                    }
+                    Err(e) => {
+                        println!("Error fwding: {}", e);
+                        println!("{:?}", dns_packet);
+                        continue;
                     }
                 }
             }

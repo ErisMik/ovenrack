@@ -12,13 +12,13 @@
 |Computer| <----[dns]----> |Ovenrack| <----[DoT]----> |DNS/DoT Server|
 ```
 
-**C:** Ovenrack can snoop DNS, and forward that to another server:
+**C:** Ovenrack can snoop DNS, remember the queries, and prefetch when the TTL expires:
 ```
 |Computer| <------------------[DNS]-----------------> |DNS Server A|
-                                |
-                                |
-                                V
-                            |Ovenrack|--------------> |DNS Server B|
+                                |                            ^
+                                |                            |
+                                V                            |
+                            |Ovenrack|------[DNS/DoT]---------
 ```
 To keep server A warm :)
 
@@ -28,7 +28,7 @@ To keep server A warm :)
                                 |
                                 |
                                 V
-                            |Ovenrack|--------------> |DNS Server B|
+                           |Ovenrack|----[DNS/DoT]----> |DNS Server B|
 ```
 You know, to keep server B warm ;)
 

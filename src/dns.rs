@@ -324,6 +324,11 @@ impl DnsHeader {
 
         return result;
     }
+
+    pub fn isrequest(&self) -> bool {
+        let result = self.flags & 0x8000;
+        return result == 0;
+    }
 }
 
 impl DnsPacket {
