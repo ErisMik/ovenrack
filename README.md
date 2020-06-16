@@ -1,5 +1,6 @@
 # Ovenrack - 🍳🥧
 "Keep your pi(e)s warm!""
+![CI](https://github.com/ErisMik/ovenrack/workflows/Rusty/badge.svg)
 
 ## What is Ovenrack? - ⁉️
 **A:** Ovenrack is a DNS proxy:
