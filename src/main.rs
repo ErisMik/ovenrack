@@ -1,9 +1,11 @@
 extern crate rustls;
 
 use byteorder::{ByteOrder, NetworkEndian};
+use clap::{App, Arg};
 use etherparse::{SlicedPacket, TransportSlice};
 use io::{Read, Write};
 use pcap::Device;
+use std::collections::VecDeque;
 use std::io;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -23,7 +25,50 @@ fn parse_dns(payload: &[u8]) -> dns::DnsPacket {
 }
 
 fn main() {
-    let packvec: Vec<dns::DnsPacket> = Vec::new();
+    let matches = App::new("Ovenrack")
+        .version("0.1.0")
+        .author("Eric M. <ericm99@gmail.com>")
+        .about("Keeps your pi(e)S warm!")
+        .arg(Arg::with_name("verbose").short("v").help("Verbose output"))
+        .arg(
+            Arg::with_name("port")
+                .short("p")
+                .long("port")
+                .value_name("PORT")
+                .help("Port to serve at if serving, or snoop at if snooping")
+                .default_value("53")
+                .takes_value(true),
+        )
+        .arg(Arg::with_name("tls").short("t").help("Tunnel over TLS"))
+        .arg(
+            Arg::with_name("serve")
+                .short("s")
+                .long("serve")
+                .value_name("ADDRESS")
+                .help("Act as a DNS server instead of snooping DNS requests")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("dev")
+                .short("d")
+                .long("dev")
+                .value_name("DEVICE")
+                .help("Device to snoop on, defaults to first device")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("DEST")
+                .help(
+                    "Destination for recived or snooped requests. Not specifying outputs to stdout",
+                )
+                .required(false)
+                .index(1),
+        )
+        .get_matches();
+
+    let port: u16 = matches.value_of("port").unwrap().parse::<u16>().unwrap();
+
+    let packvec: VecDeque<dns::DnsPacket> = VecDeque::new();
     let packets = Arc::new(Mutex::new(packvec));
 
     let cap = thread::spawn({
@@ -43,17 +88,17 @@ fn main() {
                         if let Some(transport) = slicedpacket.transport {
                             match transport {
                                 TransportSlice::Udp(transportheader) => {
-                                    if transportheader.destination_port() == 53
-                                        || transportheader.source_port() == 53
+                                    if transportheader.destination_port() == port
+                                        || transportheader.source_port() == port
                                     {
                                         let mut v = cap_clone.lock().unwrap();
-                                        v.push(parse_dns(slicedpacket.payload));
+                                        v.push_back(parse_dns(slicedpacket.payload));
                                     }
                                 }
                                 TransportSlice::Tcp(_) => {} // Currently broken :(
                                                              // TransportSlice::Tcp(transportheader) => {
-                                                             //     if transportheader.destination_port() == 53
-                                                             //         || transportheader.source_port() == 53
+                                                             //     if transportheader.destination_port() == port
+                                                             //         || transportheader.source_port() == port
                                                              //     {
                                                              //         let mut v = cap_clone.lock().unwrap();
                                                              //         v.push(parse_dns(slicedpacket.payload));
@@ -72,9 +117,9 @@ fn main() {
         move || loop {
             let mut v = fwd_clone.lock().unwrap();
 
-            if v.len() > 0 {
-                let mut dns_packet = v.pop().unwrap();
-                if dns_packet.answer_section.len() == 0 {
+            while v.len() > 0 {
+                let mut dns_packet = v.pop_front().unwrap();
+                if dns_packet.header.ancount == 0 {
                     print!("{} --> ", dns_packet.header.id);
                     dns_packet.header.id = dns_packet.header.id.wrapping_add(1);
                     println!("{}", dns_packet.header.id);
@@ -107,13 +152,20 @@ fn main() {
                             let mut dns_vec: Vec<u8> = Vec::new();
                             let mut dns_buff: [u8; 1] = [0; 1];
                             for _i in 0..reply_len {
-                                stream.read(&mut dns_buff).unwrap();
-                                dns_vec.extend_from_slice(&dns_buff);
+                                if let Err(e) = stream.read(&mut dns_buff) {
+                                    println!("Error fwding: {}", e);
+                                    continue;
+                                } else {
+                                    dns_vec.extend_from_slice(&dns_buff);
+                                }
                             }
 
                             parse_dns(&dns_vec);
                         }
-                        Err(e) => println!("Error fwding: {}", e),
+                        Err(e) => {
+                            println!("Error fwding: {}", e);
+                            continue;
+                        }
                     }
                 }
             }
