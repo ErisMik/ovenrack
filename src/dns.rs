@@ -400,3 +400,103 @@ impl DnsPacket {
         return result;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rdata_serialize_deserialize_ipv4() {
+        let raw_rdata: [u8; 4] = [0x3f, 0xf5, 0xd0, 0xc3];
+        let rdata_struct = RData::from_slice(&raw_rdata, Some(1)); // A
+        let rdata_bytes = rdata_struct.0.bytes();
+
+        assert_eq!(raw_rdata, rdata_bytes.as_ref());
+    }
+
+    #[test]
+    fn rdata_serialize_deserialize_ipv6() {
+        let raw_rdata: [u8; 16] = [
+            0x20, 0x01, 0x41, 0xd0, 0x03, 0x02, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x76, 0x15,
+        ];
+        let rdata_struct = RData::from_slice(&raw_rdata, Some(28)); // AAAA
+        let rdata_bytes = rdata_struct.0.bytes();
+
+        assert_eq!(raw_rdata, rdata_bytes.as_ref());
+    }
+
+    #[test]
+    fn rdata_serialize_deserialize_other() {
+        let raw_rdata = b"\x06\x74\x77\x69\x74\x63\x68\x03\x6d\x61\x70\x06\x66\x61\x73\x74\x6c\x79\x03\x6e\x65\x74\x00";
+        let rdata_struct = RData::from_slice(raw_rdata, Some(5)); // CNAME
+        let rdata_bytes = rdata_struct.0.bytes();
+
+        assert_eq!(raw_rdata, rdata_bytes.as_slice());
+    }
+
+    #[test]
+    fn dnsanswersection_serialize_deserialize() {
+        let raw_dns_answer = b"\xc0\x0c\x00\x1c\x00\x01\x00\x01\x51\x80\x00\x10\x26\x00\x3c\x01\x00\x00\x00\x00\xf0\x3c\x92\xff\xfe\xb3\x3c\x07";
+        let dns_answer_struct = DnsAnswerSection::from_slice(raw_dns_answer);
+        let dns_answer_bytes = dns_answer_struct.0.bytes();
+
+        assert_eq!(raw_dns_answer, dns_answer_bytes.as_slice());
+    }
+
+    #[test]
+    fn dnsquestionsection_serialize_deserialize() {
+        let raw_dns_question = b"\x06\x67\x69\x74\x68\x75\x62\x03\x63\x6f\x6d\x00\x00\x1c\x00\x01";
+        let dns_question_struct = DnsQuestionSection::from_slice(raw_dns_question);
+        let dns_question_bytes = dns_question_struct.0.bytes();
+
+        assert_eq!(raw_dns_question, dns_question_bytes.as_slice());
+    }
+
+    #[test]
+    fn dnsheader_serialize_deserialize() {
+        let raw_dns_header = b"\x02\xaf\x81\x80\x00\x01\x00\x02\x00\x00\x00\x00";
+        let dns_header_struct = DnsHeader::from_slice(raw_dns_header);
+        let dns_header_bytes = dns_header_struct.0.bytes();
+
+        assert_eq!(raw_dns_header, dns_header_bytes.as_slice());
+    }
+
+    #[test]
+    fn dnsquery_serialize_deserialize() {
+        let raw_dns = b"\x2b\x25\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03\x77\x77\x77\x07\x6e\x65\x74\x66\x6c\x69\x78\x03\x63\x6f\x6d\x00\x00\x1c\x00\x01";
+        let dns_struct = DnsPacket::from_slice(raw_dns);
+        let dns_bytes = dns_struct.bytes();
+
+        assert_eq!(&raw_dns[0..], dns_bytes.as_slice());
+    }
+
+    #[test]
+    fn dnsresponse_serialize_deserialize() {
+        let raw_dns = b"\
+\x2b\x25\x81\x80\x00\x01\x00\x0a\x00\x00\x00\x00\x03\x77\x77\x77\
+\x07\x6e\x65\x74\x66\x6c\x69\x78\x03\x63\x6f\x6d\x00\x00\x1c\x00\
+\x01\xc0\x0c\x00\x05\x00\x01\x00\x00\x07\x07\x00\x0a\x03\x77\x77\
+\x77\x03\x67\x65\x6f\xc0\x10\xc0\x2d\x00\x05\x00\x01\x00\x00\x07\
+\x07\x00\x17\x03\x77\x77\x77\x09\x75\x73\x2d\x77\x65\x73\x74\x2d\
+\x32\x06\x70\x72\x6f\x64\x61\x61\xc0\x10\xc0\x43\x00\x1c\x00\x01\
+\x00\x00\x00\x13\x00\x10\x26\x20\x01\x08\x70\x0f\x00\x00\x00\x00\
+\x00\x00\x34\x0a\x19\xa7\xc0\x43\x00\x1c\x00\x01\x00\x00\x00\x13\
+\x00\x10\x26\x20\x01\x08\x70\x0f\x00\x00\x00\x00\x00\x00\x22\xdf\
+\xe8\x9d\xc0\x43\x00\x1c\x00\x01\x00\x00\x00\x13\x00\x10\x26\x20\
+\x01\x08\x70\x0f\x00\x00\x00\x00\x00\x00\x34\x1b\x35\x54\xc0\x43\
+\x00\x1c\x00\x01\x00\x00\x00\x13\x00\x10\x26\x20\x01\x08\x70\x0f\
+\x00\x00\x00\x00\x00\x00\x34\x23\xd9\x0b\xc0\x43\x00\x1c\x00\x01\
+\x00\x00\x00\x13\x00\x10\x26\x20\x01\x08\x70\x0f\x00\x00\x00\x00\
+\x00\x00\x34\x23\xe4\xb9\xc0\x43\x00\x1c\x00\x01\x00\x00\x00\x13\
+\x00\x10\x26\x20\x01\x08\x70\x0f\x00\x00\x00\x00\x00\x00\x36\xbb\
+\xed\x4c\xc0\x43\x00\x1c\x00\x01\x00\x00\x00\x13\x00\x10\x26\x20\
+\x01\x08\x70\x0f\x00\x00\x00\x00\x00\x00\x23\xa2\x22\x9f\xc0\x43\
+\x00\x1c\x00\x01\x00\x00\x00\x13\x00\x10\x26\x20\x01\x08\x70\x0f\
+\x00\x00\x00\x00\x00\x00\x34\x28\xd6\x48";
+        let dns_struct = DnsPacket::from_slice(raw_dns);
+        let dns_bytes = dns_struct.bytes();
+
+        assert_eq!(&raw_dns[0..], dns_bytes.as_slice());
+    }
+}
