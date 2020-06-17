@@ -2,13 +2,13 @@ extern crate rustls;
 
 use byteorder::{ByteOrder, NetworkEndian};
 use clap::{App, Arg};
+use crossbeam::crossbeam_channel;
 use etherparse::{SlicedPacket, TransportSlice};
 use io::{Read, Write};
 use pcap::Device;
-use std::collections::VecDeque;
 use std::io;
-use std::sync::{Arc, Mutex};
 use std::thread;
+
 mod dns;
 
 fn parse_dns(payload: &[u8]) -> dns::DnsPacket {
@@ -70,11 +70,9 @@ fn main() {
 
     let port: u16 = matches.value_of("port").unwrap().parse::<u16>().unwrap();
 
-    let packvec: VecDeque<dns::DnsPacket> = VecDeque::new();
-    let packets = Arc::new(Mutex::new(packvec));
+    let (s, r) = crossbeam_channel::unbounded();
 
     let cap = thread::spawn({
-        let cap_clone = Arc::clone(&packets);
         move || {
             match Device::lookup() {
                 Ok(d) => println!("Using device: {}", d.name),
@@ -93,10 +91,9 @@ fn main() {
                                     if transportheader.destination_port() == port
                                         || transportheader.source_port() == port
                                     {
-                                        let mut v = cap_clone.lock().unwrap();
                                         let dns_packet = parse_dns(slicedpacket.payload);
                                         if dns_packet.header.isrequest() == true {
-                                            v.push_back(dns_packet);
+                                            s.send(dns_packet).unwrap();
                                         }
                                     }
                                 }
@@ -110,13 +107,8 @@ fn main() {
     });
 
     let fwd = thread::spawn({
-        let fwd_clone = Arc::clone(&packets);
         move || loop {
-            let mut v = fwd_clone.lock().unwrap();
-
-            while v.len() > 0 {
-                let mut dns_packet = v.pop_front().unwrap();
-
+            if let Ok(mut dns_packet) = r.recv() {
                 print!("{} --> ", dns_packet.header.id);
                 dns_packet.header.id = dns_packet.header.id.wrapping_add(1);
                 println!("{}", dns_packet.header.id);
