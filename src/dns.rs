@@ -376,6 +376,21 @@ impl DnsPacket {
         };
     }
 
+    pub fn from_slice_debug(slice: &[u8]) -> DnsPacket {
+        let dns_packet = DnsPacket::from_slice(slice);
+        println!(
+            "DNS id: {}, NAME: {}, TYPE {}, Q:{}, A:{}, NS:{}, AR:{}",
+            dns_packet.header.id,
+            dns_packet.question_section[0].name_string(),
+            dns_packet.question_section[0].qtype,
+            dns_packet.header.qdcount,
+            dns_packet.header.ancount,
+            dns_packet.header.nscount,
+            dns_packet.header.arcount,
+        );
+        return dns_packet;
+    }
+
     pub fn bytes(&self) -> Vec<u8> {
         let mut result: Vec<u8> = Vec::new();
 
