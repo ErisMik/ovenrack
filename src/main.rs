@@ -64,9 +64,12 @@ fn main() {
         }
     }));
 
+    let dest_receivers: Vec<crossbeam_channel::Receiver<dns::DnsPacket>> = vec![r];
+    let dest_senders: Vec<crossbeam_channel::Sender<dns::DnsPacket>> = vec![s2];
+
     threads.push(thread::spawn({
         move || {
-            dest::dot_dest(r, s2);
+            dest::dot_dest(dest_receivers, dest_senders);
         }
     }));
 

@@ -1,14 +1,14 @@
 use byteorder::{ByteOrder, NetworkEndian};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RData {
     AData { ip: Ipv4Addr },
     AAAAData { ip: Ipv6Addr },
     OtherData { data: Vec<u8> },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DnsAnswerSection {
     pub name: Vec<u8>,
     pub atype: u16,
@@ -18,14 +18,14 @@ pub struct DnsAnswerSection {
     pub rdata: RData,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DnsQuestionSection {
     pub qname: Vec<u8>,
     pub qtype: u16,
     pub qclass: u16,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DnsHeader {
     pub id: u16,
     pub flags: u16,
@@ -36,7 +36,7 @@ pub struct DnsHeader {
 }
 const DNS_HEADER_LEN: usize = 12;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DnsPacket {
     pub header: DnsHeader,
     pub question_section: Vec<DnsQuestionSection>,

@@ -5,11 +5,11 @@ use std::io::{Read, Write};
 use super::dns;
 
 pub fn dot_dest(
-    input: crossbeam_channel::Receiver<dns::DnsPacket>,
-    output: crossbeam_channel::Sender<dns::DnsPacket>,
+    inputs: Vec<crossbeam_channel::Receiver<dns::DnsPacket>>,
+    outputs: Vec<crossbeam_channel::Sender<dns::DnsPacket>>,
 ) {
     loop {
-        if let Ok(mut dns_packet) = input.recv() {
+        if let Ok(mut dns_packet) = inputs[0].recv() {
             let previous_id = dns_packet.header.id;
             println!("{} --> {}", previous_id, previous_id.wrapping_add(1));
             dns_packet.header.id = dns_packet.header.id.wrapping_add(1);
@@ -51,7 +51,10 @@ pub fn dot_dest(
                     }
 
                     let dns_response_packet = dns::DnsPacket::from_slice_debug(&dns_vec);
-                    output.send(dns_response_packet);
+                    for output in &outputs {
+                        let cloned_packet = dns_response_packet.clone();
+                        output.send(cloned_packet);
+                    }
                 }
                 Err(e) => {
                     println!("Error fwding: {}", e);
