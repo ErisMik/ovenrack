@@ -50,4 +50,4 @@ pub fn snoop_source(
     }
 }
 
-fn serve_source<T>(_output: crossbeam_channel::Sender<T>, _input: crossbeam_channel::Receiver<T>) {}
+// fn serve_source<T>(_output: crossbeam_channel::Sender<T>, _input: crossbeam_channel::Receiver<T>) {}
