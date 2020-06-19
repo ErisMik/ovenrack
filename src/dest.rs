@@ -5,53 +5,79 @@ use std::net::IpAddr;
 
 use super::dns;
 
+const DEFAULT_DOT_PORT: u16 = 853;
+const DEFAULT_DNS_PORT: u16 = 53;
+
 pub struct DNSConfig {
-    dot: bool,
+    port: u16,
+    address: IpAddr,
+}
+
+pub struct DOTConfig {
     port: u16,
     address: IpAddr,
     domain: Vec<u8>,
 }
-const DEFAULT_DOT_PORT: u16 = 853;
-const DEFAULT_DNS_PORT: u16 = 53;
 
-impl DNSConfig {
-    fn parse_dest(dest: String) -> (IpAddr, String) {
-        let dest_parts: Vec<&str> = dest.split('#').collect();
-        let address: IpAddr = dest_parts[0].parse::<IpAddr>().unwrap();
+pub enum DestConfig {
+    Dns(DNSConfig),
+    Dot(DOTConfig),
+    Stdout,
+}
+
+pub fn parse_args(matches: &clap::ArgMatches) -> DestConfig {
+    let dest_string: String = match matches.value_of("dest") {
+        Some(dest_str) => dest_str.to_string(),
+        None => "".to_string(),
+    };
+
+    let is_tls = match dest_string.find("#") {
+        Some(_) => true,
+        None => false,
+    };
+
+    if dest_string == "-" {
+        println!("STDOUT");
+        return DestConfig::Stdout;
+    } else if is_tls {
+        println!("DoT");
+        let dest_parts: Vec<&str> = dest_string.split('#').collect();
+        let ip_addr: IpAddr = dest_parts[0].parse::<IpAddr>().unwrap();
         let hostname: String = dest_parts[1].to_string();
-        return (address, hostname);
+
+        let dns_config = DOTConfig {
+            port: DEFAULT_DOT_PORT,
+            address: ip_addr,
+            domain: hostname.as_bytes().to_vec(),
+        };
+        return DestConfig::Dot(dns_config);
+    } else {
+        println!("DNS");
+        let ip_addr = dest_string.parse::<IpAddr>().unwrap();
+        let dns_config = DNSConfig {
+            port: DEFAULT_DNS_PORT,
+            address: ip_addr,
+        };
+        return DestConfig::Dns(dns_config);
     }
+}
 
-    pub fn from_dest_string(dest: String, istls: bool) -> DNSConfig {
-        let port = {
-            if istls {
-                DEFAULT_DOT_PORT
-            } else {
-                DEFAULT_DNS_PORT
-            }
-        };
-
-        let dest_parts = DNSConfig::parse_dest(dest);
-
-        return DNSConfig {
-            dot: istls,
-            port: port,
-            address: dest_parts.0,
-            domain: dest_parts.1.as_bytes().to_vec(),
-        };
+pub fn dest_loop(
+    inputs: Vec<crossbeam_channel::Receiver<dns::DnsPacket>>,
+    outputs: Vec<crossbeam_channel::Sender<dns::DnsPacket>>,
+    config: DestConfig,
+) {
+    match config {
+        DestConfig::Dot(config) => dot_dest(inputs, outputs, config),
+        _ => println!("Not implemented yet."),
     }
 }
 
 pub fn dot_dest(
     inputs: Vec<crossbeam_channel::Receiver<dns::DnsPacket>>,
     outputs: Vec<crossbeam_channel::Sender<dns::DnsPacket>>,
-    dnsconfig: DNSConfig,
+    dnsconfig: DOTConfig,
 ) {
-    if !dnsconfig.dot {
-        println!("Wrong config for this dest...");
-        std::process::exit(1);
-    }
-
     let hostname = std::str::from_utf8(&dnsconfig.domain).unwrap();
     let ip = {
         match dnsconfig.address {
@@ -107,7 +133,8 @@ pub fn dot_dest(
                         if reply_len > 0 {
                             let dns_response_packet = dns::DnsPacket::from_slice_debug(&dns_vec);
                             for output in &outputs {
-                                let cloned_packet = dns_response_packet.clone();
+                                let mut cloned_packet = dns_response_packet.clone();
+                                cloned_packet.header.id = cloned_packet.header.id.wrapping_sub(1);
                                 if let Ok(_) = output.send(cloned_packet) {};
                             }
                         }

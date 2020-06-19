@@ -1,11 +1,66 @@
+use clap;
 use crossbeam::crossbeam_channel;
 use etherparse::{SlicedPacket, TransportSlice};
 use pcap::Device;
+use std::net::IpAddr;
 
 use super::dns;
 
+pub struct ServeConfig {
+    pub port: u16,
+    pub address: IpAddr,
+}
+
 pub struct SnoopConfig {
     pub port: u16,
+    pub device: pcap::Device,
+}
+
+pub enum SourceConfig {
+    Snoop(SnoopConfig),
+    Serve(ServeConfig),
+    Stdin,
+}
+
+pub fn parse_args(matches: &clap::ArgMatches) -> SourceConfig {
+    let port: u16 = matches.value_of("port").unwrap().parse::<u16>().unwrap();
+
+    let src_string: String = match matches.value_of("source") {
+        Some(src_str) => src_str.to_string(),
+        None => "".to_string(),
+    };
+
+    if src_string == "-" {
+        println!("STDIN");
+        return SourceConfig::Stdin;
+    } else if let Ok(ip_addr) = src_string.parse::<IpAddr>() {
+        println!("SERVE");
+        let serve_config = ServeConfig {
+            port: port,
+            address: ip_addr,
+        };
+        return SourceConfig::Serve(serve_config);
+    } else {
+        println!("SNOOP");
+        // TODO(Eric Mikulin): Add device name parsing
+        let dev = Device::lookup().unwrap();
+        let snoop_config = SnoopConfig {
+            port: port,
+            device: dev,
+        };
+        return SourceConfig::Snoop(snoop_config);
+    }
+}
+
+pub fn source_loop(
+    output: crossbeam_channel::Sender<dns::DnsPacket>,
+    input: crossbeam_channel::Receiver<dns::DnsPacket>,
+    config: SourceConfig,
+) {
+    match config {
+        SourceConfig::Snoop(config) => snoop_source(output, input, config),
+        _ => println!("Not implemented yet."),
+    }
 }
 
 pub fn snoop_source(
@@ -18,7 +73,7 @@ pub fn snoop_source(
         Err(e) => println!("Error using device: {}", e),
     }
 
-    let mut cap = Device::lookup().unwrap().open().unwrap();
+    let mut cap = config.device.open().unwrap();
 
     while let Ok(packet) = cap.next() {
         match SlicedPacket::from_ethernet(&packet.data) {
