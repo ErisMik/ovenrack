@@ -51,12 +51,19 @@ fn main() {
 
     let (request_sender, request_reciever) = crossbeam_channel::unbounded();
     let (response_sender, response_reciever) = crossbeam_channel::unbounded();
+    let (dest_flag_sender, dest_flag_reciever) = crossbeam_channel::unbounded();
 
     let mut threads = vec![];
 
     threads.push(thread::spawn({
+        let flag_sender = dest_flag_sender.clone();
         move || {
-            source::source_loop(request_sender, response_reciever, source_config);
+            source::source_loop(
+                flag_sender,
+                request_sender,
+                response_reciever,
+                source_config,
+            );
         }
     }));
 
@@ -72,15 +79,21 @@ fn main() {
         dest_senders.push(cache_response_sender);
 
         threads.push(thread::spawn({
+            let flag_sender = dest_flag_sender.clone();
             move || {
-                cache::cache_loop(cache_request_sender, cache_response_reciever);
+                cache::cache_loop(flag_sender, cache_request_sender, cache_response_reciever);
             }
         }));
     }
 
     threads.push(thread::spawn({
         move || {
-            dest::dest_loop(dest_receivers, dest_senders, dest_config);
+            dest::dest_loop(
+                dest_flag_reciever,
+                dest_receivers,
+                dest_senders,
+                dest_config,
+            );
         }
     }));
 

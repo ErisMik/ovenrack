@@ -53,17 +53,19 @@ pub fn parse_args(matches: &clap::ArgMatches) -> SourceConfig {
 }
 
 pub fn source_loop(
+    flag_output: crossbeam_channel::Sender<bool>,
     output: crossbeam_channel::Sender<dns::DnsPacket>,
     input: crossbeam_channel::Receiver<dns::DnsPacket>,
     config: SourceConfig,
 ) {
     match config {
-        SourceConfig::Snoop(config) => snoop_source(output, input, config),
+        SourceConfig::Snoop(config) => snoop_source(flag_output, output, input, config),
         _ => println!("Not implemented yet."),
     }
 }
 
 pub fn snoop_source(
+    flag_output: crossbeam_channel::Sender<bool>,
     output: crossbeam_channel::Sender<dns::DnsPacket>,
     input: crossbeam_channel::Receiver<dns::DnsPacket>,
     config: SnoopConfig,
@@ -89,6 +91,7 @@ pub fn snoop_source(
                                     dns::DnsPacket::from_slice_debug(slicedpacket.payload);
                                 if dns_packet.header.isrequest() == true {
                                     output.send(dns_packet).unwrap();
+                                    flag_output.send(true).unwrap();
                                 }
                             }
                         }
