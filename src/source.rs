@@ -2,7 +2,7 @@ use clap;
 use crossbeam::crossbeam_channel;
 use etherparse::{SlicedPacket, TransportSlice};
 use pcap::Device;
-use std::net::IpAddr;
+use std::net::{IpAddr, UdpSocket};
 
 use super::dns;
 
@@ -60,6 +60,7 @@ pub fn source_loop(
 ) {
     match config {
         SourceConfig::Snoop(config) => snoop_source(flag_output, output, input, config),
+        SourceConfig::Serve(config) => serve_source(flag_output, output, input, config),
         _ => println!("Not implemented yet."),
     }
 }
@@ -108,4 +109,33 @@ pub fn snoop_source(
     }
 }
 
-// fn serve_source<T>(_output: crossbeam_channel::Sender<T>, _input: crossbeam_channel::Receiver<T>) {}
+pub fn serve_source(
+    flag_output: crossbeam_channel::Sender<bool>,
+    output: crossbeam_channel::Sender<dns::DnsPacket>,
+    input: crossbeam_channel::Receiver<dns::DnsPacket>,
+    config: ServeConfig,
+) {
+    let ip = {
+        match config.address {
+            IpAddr::V4(ip) => ip.to_string(),
+            IpAddr::V6(ip) => ip.to_string(),
+        }
+    };
+    let connection_string = format!("{}:{}", ip, config.port);
+
+    let socket = UdpSocket::bind(connection_string).unwrap();
+
+    loop {
+        let mut buf = [0; 512];
+
+        let (_amt, src) = socket.recv_from(&mut buf).unwrap();
+        let dns_packet = dns::DnsPacket::from_slice_debug(&buf);
+        if dns_packet.header.isrequest() == true {
+            output.send(dns_packet).unwrap();
+            flag_output.send(true).unwrap();
+        }
+
+        let dns_response = input.recv().unwrap();
+        socket.send_to(&dns_response.bytes(), &src).unwrap();
+    }
+}
