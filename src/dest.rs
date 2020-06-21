@@ -91,6 +91,16 @@ pub fn dot_dest(
 
     loop {
         if let Ok(_) = flag_input.recv() {
+            let mut socket = std::net::TcpStream::connect(&tcp_connection_string).unwrap();
+            let mut config = rustls::ClientConfig::new();
+            config
+                .root_store
+                .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+            let arc = std::sync::Arc::new(config);
+            let dns_name = webpki::DNSNameRef::try_from_ascii_str(hostname).unwrap();
+            let mut client = rustls::ClientSession::new(&arc, dns_name);
+            let mut stream = rustls::Stream::new(&mut client, &mut socket);
+
             for input in &inputs {
                 if let Ok(mut dns_packet) = input.try_recv() {
                     let previous_id = dns_packet.header.id;
@@ -103,16 +113,6 @@ pub fn dot_dest(
                     NetworkEndian::write_u16(&mut u16buf, dns_len_u16);
                     dns_payload.extend_from_slice(&u16buf);
                     dns_payload.extend(dns_packet.bytes().iter());
-
-                    let mut socket = std::net::TcpStream::connect(&tcp_connection_string).unwrap();
-                    let mut config = rustls::ClientConfig::new();
-                    config
-                        .root_store
-                        .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-                    let arc = std::sync::Arc::new(config);
-                    let dns_name = webpki::DNSNameRef::try_from_ascii_str(hostname).unwrap();
-                    let mut client = rustls::ClientSession::new(&arc, dns_name);
-                    let mut stream = rustls::Stream::new(&mut client, &mut socket);
 
                     stream.write(&dns_payload).unwrap();
 
