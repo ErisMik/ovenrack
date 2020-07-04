@@ -22,6 +22,17 @@ pub enum SourceConfig {
     Stdin,
 }
 
+fn get_device_from_name(name: &str) -> Result<pcap::Device, pcap::Error> {
+    for dev in Device::list()? {
+        if dev.name == name {
+            return Ok(dev);
+        }
+    }
+    
+    println!("Device {} not found, using default", name);
+    return Ok(Device::lookup()?);
+}
+
 pub fn parse_args(matches: &clap::ArgMatches) -> SourceConfig {
     let port: u16 = matches.value_of("port").unwrap().parse::<u16>().unwrap();
 
@@ -42,8 +53,8 @@ pub fn parse_args(matches: &clap::ArgMatches) -> SourceConfig {
         return SourceConfig::Serve(serve_config);
     } else {
         println!("SNOOP");
-        // TODO(Eric Mikulin): Add device name parsing
-        let dev = Device::lookup().unwrap();
+
+        let dev = get_device_from_name(&src_string).unwrap();
         let snoop_config = SnoopConfig {
             port: port,
             device: dev,
