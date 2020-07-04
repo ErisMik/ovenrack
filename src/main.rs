@@ -45,8 +45,8 @@ fn main() {
         )
         .get_matches();
 
-    let source_config = source::parse_args(&matches);
-    let dest_config = dest::parse_args(&matches);
+    let source_config = source::parse_args(&matches).unwrap();
+    let dest_config = dest::parse_args(&matches).unwrap();
     let enable_cache: bool = matches.occurrences_of("cache") > 0;
 
     let (request_sender, request_reciever) = crossbeam_channel::unbounded();

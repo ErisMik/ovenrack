@@ -2,6 +2,7 @@ use clap;
 use crossbeam::crossbeam_channel;
 use etherparse::{SlicedPacket, TransportSlice};
 use pcap::Device;
+use std::collections::HashMap;
 use std::net::{IpAddr, UdpSocket};
 
 use super::dns;
@@ -28,13 +29,13 @@ fn get_device_from_name(name: &str) -> Result<pcap::Device, pcap::Error> {
             return Ok(dev);
         }
     }
-    
+
     println!("Device {} not found, using default", name);
     return Ok(Device::lookup()?);
 }
 
-pub fn parse_args(matches: &clap::ArgMatches) -> SourceConfig {
-    let port: u16 = matches.value_of("port").unwrap().parse::<u16>().unwrap();
+pub fn parse_args(matches: &clap::ArgMatches) -> Result<SourceConfig, Box<dyn std::error::Error>> {
+    let port: u16 = matches.value_of("port").unwrap().parse::<u16>()?;
 
     let src_string: String = match matches.value_of("source") {
         Some(src_str) => src_str.to_string(),
@@ -43,23 +44,23 @@ pub fn parse_args(matches: &clap::ArgMatches) -> SourceConfig {
 
     if src_string == "-" {
         println!("STDIN");
-        return SourceConfig::Stdin;
+        return Ok(SourceConfig::Stdin);
     } else if let Ok(ip_addr) = src_string.parse::<IpAddr>() {
         println!("SERVE");
         let serve_config = ServeConfig {
             port: port,
             address: ip_addr,
         };
-        return SourceConfig::Serve(serve_config);
+        return Ok(SourceConfig::Serve(serve_config));
     } else {
         println!("SNOOP");
 
-        let dev = get_device_from_name(&src_string).unwrap();
+        let dev = get_device_from_name(&src_string)?;
         let snoop_config = SnoopConfig {
             port: port,
             device: dev,
         };
-        return SourceConfig::Snoop(snoop_config);
+        return Ok(SourceConfig::Snoop(snoop_config));
     }
 }
 
@@ -133,20 +134,36 @@ pub fn serve_source(
         }
     };
     let connection_string = format!("{}:{}", ip, config.port);
-
     let socket = UdpSocket::bind(connection_string).unwrap();
+    socket.set_nonblocking(true).unwrap();
+
+    let mut request_map: HashMap<u16, std::net::SocketAddr> = HashMap::new();
 
     loop {
         let mut buf = [0; 512];
 
-        let (_amt, src) = socket.recv_from(&mut buf).unwrap();
-        let dns_packet = dns::DnsPacket::from_slice_debug(&buf);
-        if dns_packet.header.isrequest() == true {
-            output.send(dns_packet).unwrap();
-            flag_output.send(true).unwrap();
-        }
+        match socket.peek_from(&mut buf) {
+            Ok((bytes_read, src)) => {
+                let dns_packet = dns::DnsPacket::from_slice_debug(&buf);
 
-        let dns_response = input.recv().unwrap();
-        socket.send_to(&dns_response.bytes(), &src).unwrap();
+                if dns_packet.header.isrequest() == true {
+                    request_map.insert(dns_packet.header.id, src);
+
+                    output.send(dns_packet).unwrap();
+                    flag_output.send(true).unwrap();
+
+                    socket.recv_from(&mut buf[..bytes_read]).unwrap();
+                }
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                if let Ok(dns_response) = input.try_recv() {
+                    if let Some(response_src) = request_map.get(&dns_response.header.id) {
+                        socket.send_to(&dns_response.bytes(), response_src).unwrap();
+                        request_map.remove(&dns_response.header.id);
+                    }
+                }
+            }
+            Err(e) => panic!("encountered IO error: {}", e),
+        }
     }
 }

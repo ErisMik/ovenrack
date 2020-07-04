@@ -1,7 +1,7 @@
 use byteorder::{ByteOrder, NetworkEndian};
 use crossbeam::crossbeam_channel;
 use std::io::{Read, Write};
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr, UdpSocket};
 
 use super::dns;
 
@@ -25,7 +25,7 @@ pub enum DestConfig {
     Stdout,
 }
 
-pub fn parse_args(matches: &clap::ArgMatches) -> DestConfig {
+pub fn parse_args(matches: &clap::ArgMatches) -> Result<DestConfig, Box<dyn std::error::Error>> {
     let dest_string: String = match matches.value_of("dest") {
         Some(dest_str) => dest_str.to_string(),
         None => "".to_string(),
@@ -38,11 +38,11 @@ pub fn parse_args(matches: &clap::ArgMatches) -> DestConfig {
 
     if dest_string == "-" {
         println!("STDOUT");
-        return DestConfig::Stdout;
+        return Ok(DestConfig::Stdout);
     } else if is_tls {
         println!("DoT");
         let dest_parts: Vec<&str> = dest_string.split('#').collect();
-        let ip_addr: IpAddr = dest_parts[0].parse::<IpAddr>().unwrap();
+        let ip_addr: IpAddr = dest_parts[0].parse::<IpAddr>()?;
         let hostname: String = dest_parts[1].to_string();
 
         let dns_config = DOTConfig {
@@ -50,15 +50,15 @@ pub fn parse_args(matches: &clap::ArgMatches) -> DestConfig {
             address: ip_addr,
             domain: hostname.as_bytes().to_vec(),
         };
-        return DestConfig::Dot(dns_config);
+        return Ok(DestConfig::Dot(dns_config));
     } else {
         println!("DNS");
-        let ip_addr = dest_string.parse::<IpAddr>().unwrap();
+        let ip_addr = dest_string.parse::<IpAddr>()?;
         let dns_config = DNSConfig {
             port: DEFAULT_DNS_PORT,
             address: ip_addr,
         };
-        return DestConfig::Dns(dns_config);
+        return Ok(DestConfig::Dns(dns_config));
     }
 }
 
@@ -70,6 +70,7 @@ pub fn dest_loop(
 ) {
     match config {
         DestConfig::Dot(config) => dot_dest(flag_input, inputs, outputs, config),
+        DestConfig::Dns(config) => dns_dest(flag_input, inputs, outputs, config),
         _ => println!("Not implemented yet."),
     }
 }
@@ -151,6 +152,51 @@ pub fn dot_dest(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+pub fn dns_dest(
+    flag_input: crossbeam_channel::Receiver<bool>,
+    inputs: Vec<crossbeam_channel::Receiver<dns::DnsPacket>>,
+    outputs: Vec<crossbeam_channel::Sender<dns::DnsPacket>>,
+    dnsconfig: DNSConfig,
+) {
+    let local_port = 5354;
+    let connection_string = format!("0.0.0.0:{}", local_port);
+    let socket = UdpSocket::bind(connection_string).unwrap();
+
+    let remote_port = dnsconfig.port;
+    let remote_socket_addr = SocketAddr::new(dnsconfig.address, remote_port);
+
+    loop {
+        if let Ok(_) = flag_input.recv() {
+            for input in &inputs {
+                if let Ok(mut dns_request) = input.try_recv() {
+                    let previous_id = dns_request.header.id;
+                    println!("{} --> {}", previous_id, previous_id.wrapping_add(1));
+                    dns_request.header.id = dns_request.header.id.wrapping_add(1);
+
+                    socket
+                        .send_to(&dns_request.bytes(), &remote_socket_addr)
+                        .unwrap();
+                }
+            }
+
+            let mut buf = [0; 512];
+
+            let (bytes_read, _src) = socket.peek_from(&mut buf).unwrap();
+            let dns_packet = dns::DnsPacket::from_slice_debug(&buf);
+
+            if dns_packet.header.isrequest() == false {
+                for output in &outputs {
+                    let mut cloned_packet = dns_packet.clone();
+                    cloned_packet.header.id = cloned_packet.header.id.wrapping_sub(1);
+                    if let Ok(_) = output.send(cloned_packet) {};
+                }
+
+                socket.recv_from(&mut buf[..bytes_read]).unwrap();
             }
         }
     }
