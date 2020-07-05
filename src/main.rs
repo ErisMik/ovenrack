@@ -29,7 +29,7 @@ fn main() {
             Arg::with_name("source")
                 .value_name("SRC")
                 .help(
-                    "Source for the requests. Using \"-\" outputs to stdout. See README for usage."
+                    "Source for the requests. Using \"-\" inputs from stdin. See README for usage."
                 )
                 .required(true)
                 .index(1),

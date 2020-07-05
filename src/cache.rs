@@ -1,4 +1,5 @@
 use crossbeam::crossbeam_channel;
+use std::collections::HashMap;
 
 use super::dns;
 
