@@ -9,10 +9,7 @@ jobs:
   build-n-test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-
-    - name: Dependencies
-      run: sudo apt-get update -y && sudo apt-get install -y libpcap-dev
+    - uses: actions/checkout@v3
 
     - name: Build
       run: cargo build --verbose

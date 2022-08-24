@@ -1,14 +1,17 @@
 use byteorder::{ByteOrder, NetworkEndian};
+use log::*;
+
+use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum RData {
-    AData { ip: Ipv4Addr },
-    AAAAData { ip: Ipv6Addr },
-    OtherData { data: Vec<u8> },
+    ARecord { ip: Ipv4Addr },
+    AAAARecord { ip: Ipv6Addr },
+    Other { data: Vec<u8> },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct DnsAnswerSection {
     pub name: Vec<u8>,
     pub atype: u16,
@@ -18,14 +21,14 @@ pub struct DnsAnswerSection {
     pub rdata: RData,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct DnsQuestionSection {
     pub qname: Vec<u8>,
     pub qtype: u16,
     pub qclass: u16,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct DnsHeader {
     pub id: u16,
     pub flags: u16,
@@ -36,7 +39,7 @@ pub struct DnsHeader {
 }
 const DNS_HEADER_LEN: usize = 12;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct DnsPacket {
     pub header: DnsHeader,
     pub question_section: Vec<DnsQuestionSection>,
@@ -45,32 +48,62 @@ pub struct DnsPacket {
     pub additional_section: Vec<DnsAnswerSection>,
 }
 
+fn dns_name_bytes_to_string(name_bytes: &[u8]) -> String {
+    let mut name: String = String::from("");
+
+    let first_byte = name_bytes[0];
+    if ((3 << 7) & first_byte) != 0 {
+        return String::from("<PTR>");
+    }
+
+    let mut offset = 0;
+    loop {
+        let name_len = name_bytes[offset];
+        offset += 1;
+
+        if name_len == 0 {
+            break;
+        }
+
+        let offset_end = offset + name_len as usize;
+        let name_field = std::str::from_utf8(&name_bytes[offset..offset_end]).unwrap();
+        offset = offset_end;
+
+        name.push_str(name_field);
+        name.push('.');
+    }
+
+    name
+}
+
 impl RData {
     fn aaaa_from_slice(slice: &[u8]) -> (RData, usize) {
-        let mut ip: [u16; 8] = [0; 8];
+        const IPV6_LENGTH: usize = 8;
+
+        let mut ip: [u16; IPV6_LENGTH] = [0; 8];
 
         let mut slice_idx = 0;
-        for i in 0..ip.len() {
+        for ip_short in &mut ip {
             let slice_idx_end = slice_idx + 2;
-            ip[i] = NetworkEndian::read_u16(&slice[slice_idx..slice_idx_end]);
+            *ip_short = NetworkEndian::read_u16(&slice[slice_idx..slice_idx_end]);
             slice_idx = slice_idx_end;
         }
 
-        let aaaa_data = RData::AAAAData {
+        let aaaa_data = RData::AAAARecord {
             ip: Ipv6Addr::new(ip[0], ip[1], ip[2], ip[3], ip[4], ip[5], ip[6], ip[7]),
         };
         let bytes_read = ip.len() * 2;
 
-        return (aaaa_data, bytes_read);
+        (aaaa_data, bytes_read)
     }
 
     fn a_from_slice(slice: &[u8]) -> (RData, usize) {
-        let a_data = RData::AData {
+        let a_data = RData::ARecord {
             ip: Ipv4Addr::new(slice[0], slice[1], slice[2], slice[3]),
         };
         let bytes_read = 4;
 
-        return (a_data, bytes_read);
+        (a_data, bytes_read)
     }
 
     fn other_from_slice(slice: &[u8]) -> (RData, usize) {
@@ -81,9 +114,9 @@ impl RData {
         }
 
         let bytes_read = bytes.len();
-        let other_data = RData::OtherData { data: bytes };
+        let other_data = RData::Other { data: bytes };
 
-        return (other_data, bytes_read);
+        (other_data, bytes_read)
     }
 
     fn from_slice(slice: &[u8], atype: Option<u16>) -> (RData, usize) {
@@ -101,19 +134,29 @@ impl RData {
         let mut result: Vec<u8> = Vec::new();
 
         match self {
-            RData::AData { ip } => {
+            RData::ARecord { ip } => {
                 for byteptr in ip.octets().iter() {
                     result.push(*byteptr);
                 }
-                return result;
+                result
             }
-            RData::AAAAData { ip } => {
+            RData::AAAARecord { ip } => {
                 for byteptr in ip.octets().iter() {
                     result.push(*byteptr);
                 }
-                return result;
+                result
             }
-            RData::OtherData { data } => return data.to_vec(),
+            RData::Other { data } => data.to_vec(),
+        }
+    }
+}
+
+impl fmt::Display for RData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RData::ARecord { ip } => write!(f, "A:{}", ip),
+            RData::AAAARecord { ip } => write!(f, "AAAA:{}", ip),
+            RData::Other { data } => write!(f, "?:{:?}", data),
         }
     }
 }
@@ -170,15 +213,19 @@ impl DnsAnswerSection {
 
         let dns_answer_section = DnsAnswerSection {
             name: aname,
-            atype: atype,
+            atype,
             class: aclass,
             ttl: attl,
-            rdlength: rdlength,
-            rdata: rdata,
+            rdlength,
+            rdata,
         };
         let bytes_read = offset;
 
-        return (dns_answer_section, bytes_read);
+        (dns_answer_section, bytes_read)
+    }
+
+    pub fn name_string(&self) -> String {
+        dns_name_bytes_to_string(&self.name)
     }
 
     fn bytes(&self) -> Vec<u8> {
@@ -202,7 +249,22 @@ impl DnsAnswerSection {
 
         result.extend(self.rdata.bytes().iter());
 
-        return result;
+        result
+    }
+}
+
+impl fmt::Display for DnsAnswerSection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "name:{}, type:{}, class:{}, ttl:{}, rdlength:{}, rdata:{}",
+            self.name_string(),
+            self.atype,
+            self.class,
+            self.ttl,
+            self.rdlength,
+            self.rdata
+        )
     }
 }
 
@@ -236,36 +298,17 @@ impl DnsQuestionSection {
         offset = offset_end;
 
         let dns_question_section = DnsQuestionSection {
-            qname: qname,
-            qtype: qtype,
-            qclass: qclass,
+            qname,
+            qtype,
+            qclass,
         };
         let bytes_read = offset;
 
-        return (dns_question_section, bytes_read);
+        (dns_question_section, bytes_read)
     }
 
     pub fn name_string(&self) -> String {
-        let mut qname: String = String::from("");
-
-        let mut offset = 0;
-        loop {
-            let qname_field_len = self.qname[offset];
-            offset += 1;
-
-            if qname_field_len == 0 {
-                break;
-            }
-
-            let offset_end = offset + qname_field_len as usize;
-            let qname_field = std::str::from_utf8(&self.qname[offset..offset_end]).unwrap();
-            offset = offset_end;
-
-            qname.push_str(qname_field);
-            qname.push('.');
-        }
-
-        return qname;
+        dns_name_bytes_to_string(&self.qname)
     }
 
     fn bytes(&self) -> Vec<u8> {
@@ -280,7 +323,19 @@ impl DnsQuestionSection {
         NetworkEndian::write_u16(&mut u16buf, self.qclass);
         result.extend_from_slice(&u16buf);
 
-        return result;
+        result
+    }
+}
+
+impl fmt::Display for DnsQuestionSection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "name:{}, type:{}, class:{}",
+            self.name_string(),
+            self.qtype,
+            self.qclass
+        )
     }
 }
 
@@ -297,7 +352,7 @@ impl DnsHeader {
 
         let bytes_read = DNS_HEADER_LEN;
 
-        return (dns_header, bytes_read);
+        (dns_header, bytes_read)
     }
 
     fn bytes(&self) -> Vec<u8> {
@@ -322,12 +377,22 @@ impl DnsHeader {
         NetworkEndian::write_u16(&mut u16buf, self.arcount);
         result.extend_from_slice(&u16buf);
 
-        return result;
+        result
     }
 
     pub fn isrequest(&self) -> bool {
         let result = self.flags & 0x8000;
-        return result == 0;
+        result == 0
+    }
+}
+
+impl fmt::Display for DnsHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "id:{}, flags:{}, QD:{}, AN:{}, NS:{}, AR:{}",
+            self.id, self.flags, self.qdcount, self.ancount, self.nscount, self.arcount
+        )
     }
 }
 
@@ -367,28 +432,17 @@ impl DnsPacket {
             offset += result.1;
         }
 
-        return DnsPacket {
+        let dns_packet = DnsPacket {
             header: dns_header,
             question_section: questions,
             answer_section: answers,
             authority_section: authorities,
             additional_section: additionals,
         };
-    }
 
-    pub fn from_slice_debug(slice: &[u8]) -> DnsPacket {
-        let dns_packet = DnsPacket::from_slice(slice);
-        println!(
-            "DNS id: {}, NAME: {}, TYPE {}, Q:{}, A:{}, NS:{}, AR:{}",
-            dns_packet.header.id,
-            dns_packet.question_section[0].name_string(),
-            dns_packet.question_section[0].qtype,
-            dns_packet.header.qdcount,
-            dns_packet.header.ancount,
-            dns_packet.header.nscount,
-            dns_packet.header.arcount,
-        );
-        return dns_packet;
+        debug!("Parsed DNS: {}", dns_packet);
+
+        dns_packet
     }
 
     pub fn bytes(&self) -> Vec<u8> {
@@ -412,7 +466,47 @@ impl DnsPacket {
             result.extend(additional.bytes().iter());
         }
 
-        return result;
+        result
+    }
+
+    pub fn add_to_answer_section(&mut self, answers: &Vec<DnsAnswerSection>) {
+        self.answer_section.extend_from_slice(answers);
+        self.header.ancount += answers.len() as u16;
+    }
+}
+
+impl fmt::Display for DnsPacket {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "HEADER[{{ {} }}]", self.header)?;
+        write!(f, " ")?;
+
+        write!(f, "QUESTION[")?;
+        for entry in self.question_section.iter() {
+            write!(f, "{{ {} }}", entry)?;
+        }
+        write!(f, "]")?;
+        write!(f, " ")?;
+
+        write!(f, "ANSWER[")?;
+        for entry in self.answer_section.iter() {
+            write!(f, "{{ {} }}", entry)?;
+        }
+        write!(f, "]")?;
+        write!(f, " ")?;
+
+        write!(f, "AUTHORITY[")?;
+        for entry in self.authority_section.iter() {
+            write!(f, "{{ {} }}", entry)?;
+        }
+        write!(f, "]")?;
+        write!(f, " ")?;
+
+        write!(f, "ADDITIONAL[")?;
+        for entry in self.additional_section.iter() {
+            write!(f, "{{ {} }}", entry)?;
+        }
+        write!(f, "]")?;
+        Ok(())
     }
 }
 
