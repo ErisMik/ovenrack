@@ -14,27 +14,16 @@
 |Computer| <----[dns]----> |Ovenrack| <----[DoT]----> |DNS/DoT Server|
 ```
 
-**C:** Ovenrack can snoop DNS, remember the queries, and prefetch when the TTL expires:
+**C:** Ovenrack can proxy tunnel the DNS over HTTPS (DoH):
 ```
-|Computer| <------------------[DNS]-----------------> |DNS Server A|
-                                |                            ^
-                                |                            |
-                                V                            |
-                            |Ovenrack|------[DNS/DoT]---------
+|Computer| <----[dns]----> |Ovenrack| <----[DoH]----> |DNS/DoH Server|
 ```
-To keep server A warm :)
 
-**D:** Ovenrack can snoop DNS, and forward that to another server:
+**D:** Ovenrack remembers the queries, and prefetches when the TTL expires:
 ```
-|Computer| <------------------[DNS]-----------------> |DNS Server A|
-                                |
-                                |
-                                V
-                           |Ovenrack|----[DNS/DoT]----> |DNS Server B|
+|Computer| <----[dns]----> |Ovenrack| <----[dns/DoT/DoH]----> |DNS/DoT/DoH Server|
+                                ^----------[dns/DoT/DoH]----> |DNS/DoT/DoH Server|
 ```
-You know, to keep server B warm ;)
-
-**E:** Or various combinations of the above!
 
 ## Installation - 📦
 1. Download this repo
@@ -66,14 +55,14 @@ ARGS:
 
 SRC can be one of three formats, which dictate the behavoir:
 - `-`. Takes input in from stdin.
-- `DEVICE_NAME`, eg. `eno1`. Ovenrack will listen on the specified device and look for DNS traffic.
 - `BIND_IP_ADDRESS`, eg. `127.0.0.1`. Ovenrack will bind to a port (default `53`) and act as a DNS server.
 
 
 DEST can be one of three formats, which dictate the behavoir:
 - `-`. Outputs to stdout.
-- `IP_ADDR`, eg. `1.1.1.1`. Ovenrack will forward DNS traffic to the specified address as plain UDP DNS.
-- `IP_ADDR#DOMAIN`, eg. `8.8.8.8#dns.google.com`. Ovenrack will forward DNS traffic to the specified address + domain as DNS over TLS.
+- `IP_ADDR`, eg. `1.1.1.1`. Ovenrack will forward DNS traffic to the specified address as plain UDP DNS (DNS).
+- `IP_ADDR#DOMAIN`, eg. `8.8.8.8#dns.google.com`. Ovenrack will forward DNS traffic to the specified address + domain as DNS over TLS (DoT).
+- `https://HOSTNAME`, eg. `https://cloudflare-dns.com/dns-query`. Ovenrack will forward DNS traffic to the specified address + domain as DNS over HTTPS (DoH).
 
 ## License - ⚖️
 See [LICENSE.txt](LICENSE.txt).
