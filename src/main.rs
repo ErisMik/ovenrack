@@ -23,8 +23,8 @@ fn main() {
         .arg(arg!(-d --dest <DEST> "Destination for the requests. Using \"-\" outputs to stdout. See README for detailed usage.").required(true))
         .get_matches();
 
-    let source_addr = matches.value_of("source").unwrap();
-    let dest_addr = matches.value_of("dest").unwrap();
+    let source_addr = matches.get_one::<String>("source").unwrap();
+    let dest_addr = matches.get_one::<String>("dest").unwrap();
 
     let dest = dest::DestClient::new(dest_addr);
     let cache = cache::DnsCache::new(dest);

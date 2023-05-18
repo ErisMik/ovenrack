@@ -5,12 +5,11 @@ authors = ["Eric Mikulin <ericm99@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0"
 byteorder = "1.4"
 chrono = "0.4"
-clap = { version = "3.2", features = ["cargo"] }
+clap = { version = "4.2", features = ["cargo"] }
 log = "0.4"
 reqwest = { version = "0.11", features = ["blocking"] }
-rustls = "0.20"
-simplelog = "0.12.1"
-webpki-roots = "0.22"
+rustls = "0.21"
+simplelog = "0.12"
+webpki-roots = "0.23"
