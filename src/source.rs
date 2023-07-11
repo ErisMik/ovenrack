@@ -1,6 +1,6 @@
-use log::*;
-
 use std::net::UdpSocket;
+
+use log::*;
 
 use crate::cache::DnsCache;
 use crate::dns;
@@ -20,7 +20,7 @@ impl SourceServer {
 
     pub fn start(&mut self) {
         info!("Binding to: {}", self.addr);
-        let socket = UdpSocket::bind(self.addr.clone()).unwrap();
+        let socket = UdpSocket::bind(self.addr.clone()).expect("Failed to bind UDP socket");
 
         loop {
             let mut buf = [0; 512];

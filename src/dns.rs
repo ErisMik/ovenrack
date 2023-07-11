@@ -1,8 +1,8 @@
-use byteorder::{ByteOrder, NetworkEndian};
-use log::*;
-
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
+
+use byteorder::{ByteOrder, NetworkEndian};
+use log::*;
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum RData {

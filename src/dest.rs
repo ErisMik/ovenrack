@@ -1,11 +1,11 @@
-use byteorder::{ByteOrder, NetworkEndian};
-use log::*;
-use rustls::*;
-
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::str::FromStr;
 use std::sync::Arc;
+
+use byteorder::{ByteOrder, NetworkEndian};
+use log::*;
+use rustls::*;
 
 use crate::dns;
 

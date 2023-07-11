@@ -1,17 +1,18 @@
-use chrono::*;
-use log::*;
-
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
+use log::*;
 
 use crate::dest;
 use crate::dns;
 
-const TTL_GRACE_PERIOD_SECS: i64 = 15;
+const TTL_GRACE_PERIOD: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 struct DnsCacheEntry {
     value: Vec<dns::DnsAnswerSection>,
-    expiry_time: DateTime<Utc>,
+    insert_time: Instant,
+    ttl: Duration,
 }
 
 pub struct DnsCache {
@@ -27,12 +28,12 @@ impl DnsCache {
     }
 
     fn query_cache(&self, request: &dns::DnsPacket) -> Option<Vec<dns::DnsAnswerSection>> {
-        let current_time = Utc::now();
+        let current_time = Instant::now();
 
         let mut answers = Vec::new();
         for dns_question in request.question_section.clone() {
             if let Some(entry) = self.cache.get(&dns_question) {
-                if current_time > entry.expiry_time {
+                if current_time > (entry.insert_time + entry.ttl) {
                     return None;
                 }
                 answers.extend_from_slice(&entry.value);
@@ -55,18 +56,20 @@ impl DnsCache {
             return;
         }
 
-        let current_time = Utc::now();
-        let grace_duration = Duration::seconds(TTL_GRACE_PERIOD_SECS);
-        let min_expiry_time = response
-            .answer_section
-            .iter()
-            .map(|ans| current_time + (Duration::seconds(ans.ttl.into()) - grace_duration))
-            .min()
-            .unwrap();
+        let min_ttl = Duration::from_secs(
+            response
+                .answer_section
+                .iter()
+                .map(|ans| ans.ttl)
+                .min()
+                .unwrap()
+                .into(),
+        );
 
         let cache_value = DnsCacheEntry {
             value: response.answer_section,
-            expiry_time: min_expiry_time,
+            insert_time: Instant::now(),
+            ttl: min_ttl - TTL_GRACE_PERIOD,
         };
 
         debug!(
