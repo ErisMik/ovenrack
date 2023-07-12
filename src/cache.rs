@@ -95,6 +95,7 @@ impl DnsCache {
                 DnsCache::build_dns_response(&request, cached_answers)
             }
             None => {
+                debug!("Cache MISS: {}", request.header.id);
                 let response = self.dest_client.query(request);
                 self.update_cache(response.clone());
                 response
