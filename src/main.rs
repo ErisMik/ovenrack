@@ -4,7 +4,6 @@ use simplelog::*;
 mod cache;
 mod dest;
 mod dns;
-mod error;
 mod source;
 
 fn main() {
@@ -26,10 +25,14 @@ fn main() {
         TerminalMode::Mixed,
         ColorChoice::Auto,
     )])
-    .unwrap();
+    .expect("Failed to initialize logger(s)");
 
-    let source_addr = matches.get_one::<String>("source").unwrap();
-    let dest_addr = matches.get_one::<String>("dest").unwrap();
+    let source_addr = matches
+        .get_one::<String>("source")
+        .expect("Argument should be required");
+    let dest_addr = matches
+        .get_one::<String>("dest")
+        .expect("Argument should be required");
 
     let dest = dest::DestClient::new(dest_addr);
     let cache = cache::DnsCache::new(dest);

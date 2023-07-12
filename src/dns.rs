@@ -66,7 +66,11 @@ fn dns_name_bytes_to_string(name_bytes: &[u8]) -> String {
         }
 
         let offset_end = offset + name_len as usize;
-        let name_field = std::str::from_utf8(&name_bytes[offset..offset_end]).unwrap();
+        let name_field =
+            std::str::from_utf8(&name_bytes[offset..offset_end]).unwrap_or_else(|error| {
+                error!("Invalid UTF8 string parsing DNS name bytes: {error}");
+                "<ERR>"
+            });
         offset = offset_end;
 
         name.push_str(name_field);

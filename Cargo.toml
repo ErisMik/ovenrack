@@ -5,6 +5,7 @@ authors = ["Eric Mikulin <ericm99@gmail.com>"]
 edition = "2021"
 
 [dependencies]
+retry = "2.0"
 byteorder = "1.4"
 clap = { version = "4.3", features = ["cargo"] }
 log = "0.4"
