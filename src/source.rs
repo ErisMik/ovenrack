@@ -4,16 +4,16 @@ use log::*;
 use retry::delay::Fixed;
 use retry::*;
 
-use crate::cache::DnsCache;
+use crate::cache::DnsCacheManager;
 use crate::dns;
 
 pub struct SourceServer {
     addr: String,
-    cache: DnsCache,
+    cache: DnsCacheManager,
 }
 
 impl SourceServer {
-    pub fn new<S: Into<String>>(addr: S, cache: DnsCache) -> Self {
+    pub fn new<S: Into<String>>(addr: S, cache: DnsCacheManager) -> Self {
         Self {
             addr: addr.into(),
             cache,

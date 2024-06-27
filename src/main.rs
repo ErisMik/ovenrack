@@ -35,8 +35,9 @@ fn main() {
         .expect("Argument should be required");
 
     let dest = dest::DestClient::new(dest_addr);
-    let cache = cache::DnsCache::new(dest);
-    let mut source = source::SourceServer::new(source_addr, cache);
+    let cache = cache::DnsCache::new();
+    let cache_manager = cache::DnsCacheManager::new(cache, dest);
+    let mut source = source::SourceServer::new(source_addr, cache_manager);
 
     source.start()
 }
