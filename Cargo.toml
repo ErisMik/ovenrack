@@ -1,15 +1,17 @@
 [package]
 name = "ovenrack"
-version = "2.0.0"
+version = "2.1.0"
 authors = ["Eric Mikulin <ericm99@gmail.com>"]
 edition = "2021"
 
 [dependencies]
 byteorder = "1.4"
-chrono = "0.4"
-clap = { version = "4.2", features = ["cargo"] }
+clap = { version = "4.3", features = ["cargo"] }
 log = "0.4"
+rand = "0.8"
 reqwest = { version = "0.11", features = ["blocking"] }
-rustls = "0.21"
+retry = "2.0"
+rustls = "0.23"
 simplelog = "0.12"
-webpki-roots = "0.23"
+time = "0.3"
+webpki-roots = "0.26"

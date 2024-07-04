@@ -1,11 +1,10 @@
-use byteorder::{ByteOrder, NetworkEndian};
-use log::*;
-use rustls::*;
-
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::str::FromStr;
 use std::sync::Arc;
+
+use byteorder::{ByteOrder, NetworkEndian};
+use log::*;
 
 use crate::dns;
 
@@ -28,13 +27,16 @@ impl DnsClient {
         let mut addr: String = addr.into();
 
         let local_socket_addr = format!("0.0.0.0:{DEFAULT_LOCAL_DNS_PORT}");
-        let local_socket = UdpSocket::bind(local_socket_addr).unwrap();
+        let local_socket = UdpSocket::bind(&local_socket_addr).unwrap_or_else(|error| {
+            panic!("Failed to bind UDP socket `{local_socket_addr}`: {error}",)
+        });
 
         if addr.find(':').is_none() {
             addr.push_str(&format!(":{DEFAULT_DNS_PORT}"));
         }
 
-        let remote_socket_addr = SocketAddr::from_str(&addr).unwrap();
+        let remote_socket_addr = SocketAddr::from_str(&addr)
+            .unwrap_or_else(|error| panic!("Failed parse socket address `{addr}`: {error}",));
 
         Self {
             local_socket,
@@ -71,25 +73,25 @@ impl DotClient {
         addr: S,
         hostname: S,
     ) -> rustls::StreamOwned<rustls::ClientConnection, TcpStream> {
-        let mut root_store = RootCertStore::empty();
-        root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
-            OwnedTrustAnchor::from_subject_spki_name_constraints(
-                ta.subject,
-                ta.spki,
-                ta.name_constraints,
-            )
-        }));
+        let root_store =
+            rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
         let config = rustls::ClientConfig::builder()
-            .with_safe_defaults()
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
-        let conn = rustls::ClientConnection::new(
-            Arc::new(config),
-            ServerName::try_from(hostname.as_ref()).unwrap(),
-        )
-        .unwrap();
-        let sock = TcpStream::connect(format!("{}:{}", addr.as_ref(), DEFAULT_DOT_PORT)).unwrap();
+        let server_name = String::from(hostname.as_ref())
+            .try_into()
+            .unwrap_or_else(|error| {
+                panic!("Failed parse hostname `{}`: {error}", hostname.as_ref())
+            });
+        let conn = rustls::ClientConnection::new(Arc::new(config), server_name)
+            .unwrap_or_else(|error| panic!("Failed to create TLS client connection: {error}"));
+
+        let addr = format!("{}:{}", addr.as_ref(), DEFAULT_DOT_PORT);
+        let sock = TcpStream::connect(&addr).unwrap_or_else(|error| {
+            panic!("Failed to create TCP socket connection to `{addr}`: {error}")
+        });
+
         rustls::StreamOwned::new(conn, sock)
     }
 }
@@ -146,7 +148,7 @@ impl DnsDest for DohClient {
 }
 
 pub struct DestClient {
-    client: Box<dyn DnsDest>,
+    client: Box<dyn DnsDest + Send>,
 }
 
 impl DestClient {
