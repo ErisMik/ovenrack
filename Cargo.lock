@@ -798,6 +798,7 @@ dependencies = [
  "byteorder",
  "clap",
  "log",
+ "rand",
  "reqwest",
  "retry",
  "rustls",

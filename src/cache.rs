@@ -42,7 +42,10 @@ struct DnsHeapEntry {
 
 impl Ord for DnsHeapEntry {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.expiry.expiry_time().cmp(&other.expiry.expiry_time()).reverse()
+        self.expiry
+            .expiry_time()
+            .cmp(&other.expiry.expiry_time())
+            .reverse()
     }
 }
 
@@ -109,18 +112,18 @@ impl DnsCache {
         );
 
         let expiry = CacheExpiry {
-                insert_time: Instant::now(),
-                ttl: min_ttl,
-            };
+            insert_time: Instant::now(),
+            ttl: min_ttl,
+        };
 
         let cache_value = DnsCacheEntry {
             value: response.answer_section,
-            expiry: expiry.clone()
+            expiry: expiry.clone(),
         };
 
         let heap_value = DnsHeapEntry {
             question: cache_key.clone(),
-            expiry: expiry.clone()
+            expiry: expiry.clone(),
         };
 
         debug!(
@@ -132,8 +135,6 @@ impl DnsCache {
     }
 
     pub fn pop_next_expired(&mut self) -> Result<dns::DnsQuestionSection, Instant> {
-        let mut sleep_time = PREFETCH_SLEEP_TIME;
-
         let result = match self.expiry_heap.peek() {
             Some(entry) => {
                 if entry.expiry.is_expired() {
@@ -141,10 +142,8 @@ impl DnsCache {
                 } else {
                     Err(entry.expiry.expiry_time())
                 }
-            },
-            None => {
-                Err(Instant::now() + PREFETCH_SLEEP_TIME)
             }
+            None => Err(Instant::now() + PREFETCH_SLEEP_TIME),
         };
 
         if result.is_ok() {
@@ -157,7 +156,7 @@ impl DnsCache {
 
 pub struct DnsCacheManager {
     dns_cache: Arc<Mutex<DnsCache>>,
-    dest_client: dest::DestClient,
+    dest_client: Arc<Mutex<dest::DestClient>>,
 
     prefetch_thread: thread::JoinHandle<()>,
 }
@@ -165,26 +164,33 @@ pub struct DnsCacheManager {
 impl DnsCacheManager {
     pub fn new(dns_cache: DnsCache, dest_client: dest::DestClient) -> Self {
         let dns_cache = Arc::new(Mutex::new(dns_cache));
+        let dest_client = Arc::new(Mutex::new(dest_client));
 
         let prefetch_thread = {
             let dns_cache = Arc::clone(&dns_cache);
+            let dest_client = Arc::clone(&dest_client);
 
-            thread::spawn(move || {
-                loop {
-                    let entry = {
+            thread::spawn(move || loop {
+                let entry = {
+                    let mut dns_cache = dns_cache.lock().unwrap();
+                    dns_cache.pop_next_expired()
+                };
+
+                match entry {
+                    Ok(expired_dns_question) => {
+                        debug!("Prefetching: {}", expired_dns_question);
+                        let request = DnsCacheManager::build_dns_request(expired_dns_question);
+
+                        let response = {
+                            let mut dest_client = dest_client.lock().unwrap();
+                            dest_client.query(request)
+                        };
+
                         let mut dns_cache = dns_cache.lock().unwrap();
-                        dns_cache.pop_next_expired()
-                    };
-
-                    match entry {
-                        Ok(expired_dns_question) => {
-                            debug!("Prefetching: {}", expired_dns_question);
-                            let request = build_dns_request(expired_dns_question);
-                            // TODO
-                        }
-                        Err(next_expiry) => {
-                            thread::sleep(next_expiry - Instant::now());
-                        }
+                        dns_cache.update(response.clone());
+                    }
+                    Err(next_expiry) => {
+                        thread::sleep(next_expiry - Instant::now());
                     }
                 }
             })
@@ -197,10 +203,8 @@ impl DnsCacheManager {
         }
     }
 
-    fn build_dns_request(
-        questions: Vec<dns::DnsQuestionSection>,
-    ) -> dns::DnsPacket {
-        unimplemented!()
+    fn build_dns_request(question: dns::DnsQuestionSection) -> dns::DnsPacket {
+        dns::DnsPacket::new_with_questions(vec![question])
     }
 
     fn build_dns_response(
@@ -222,7 +226,10 @@ impl DnsCacheManager {
             }
             None => {
                 debug!("Cache MISS: {}", request.header.id);
-                let response = self.dest_client.query(request);
+                let response = {
+                    let mut dest_client = self.dest_client.lock().unwrap();
+                    dest_client.query(request)
+                };
                 dns_cache.update(response.clone());
                 response
             }

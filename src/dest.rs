@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use byteorder::{ByteOrder, NetworkEndian};
 use log::*;
-use rustls::*;
 
 use crate::dns;
 
@@ -149,7 +148,7 @@ impl DnsDest for DohClient {
 }
 
 pub struct DestClient {
-    client: Box<dyn DnsDest>,
+    client: Box<dyn DnsDest + Send>,
 }
 
 impl DestClient {

@@ -3,6 +3,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 
 use byteorder::{ByteOrder, NetworkEndian};
 use log::*;
+use rand::prelude::*;
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum RData {
@@ -388,6 +389,21 @@ impl DnsHeader {
         let result = self.flags & 0x8000;
         result == 0
     }
+
+    fn new(id: u16) -> Self {
+        DnsHeader {
+            id: id,
+            flags: 0,
+            qdcount: 0,
+            ancount: 0,
+            nscount: 0,
+            arcount: 0,
+        }
+    }
+
+    fn add_to_question_section(&mut self, count: u16) {
+        self.qdcount += count;
+    }
 }
 
 impl fmt::Display for DnsHeader {
@@ -471,6 +487,23 @@ impl DnsPacket {
         }
 
         result
+    }
+
+    pub fn new_with_questions(questions: Vec<DnsQuestionSection>) -> DnsPacket {
+        let mut dns_header = DnsHeader::new(random());
+        dns_header.add_to_question_section(questions.len() as u16);
+
+        let dns_packet = DnsPacket {
+            header: dns_header,
+            question_section: questions,
+            answer_section: vec![],
+            authority_section: vec![],
+            additional_section: vec![],
+        };
+
+        debug!("Generated DNS: {}", dns_packet);
+
+        dns_packet
     }
 
     pub fn add_to_answer_section(&mut self, answers: &Vec<DnsAnswerSection>) {
