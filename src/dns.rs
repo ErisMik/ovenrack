@@ -392,7 +392,7 @@ impl DnsHeader {
 
     fn new(id: u16) -> Self {
         DnsHeader {
-            id: id,
+            id,
             flags: 0,
             qdcount: 0,
             ancount: 0,
@@ -506,7 +506,7 @@ impl DnsPacket {
         dns_packet
     }
 
-    pub fn add_to_answer_section(&mut self, answers: &Vec<DnsAnswerSection>) {
+    pub fn add_to_answer_section(&mut self, answers: &[DnsAnswerSection]) {
         self.answer_section.extend_from_slice(answers);
         self.header.ancount += answers.len() as u16;
     }

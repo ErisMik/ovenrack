@@ -158,7 +158,7 @@ pub struct DnsCacheManager {
     dns_cache: Arc<Mutex<DnsCache>>,
     dest_client: Arc<Mutex<dest::DestClient>>,
 
-    prefetch_thread: thread::JoinHandle<()>,
+    _prefetch_thread: thread::JoinHandle<()>,
 }
 
 impl DnsCacheManager {
@@ -199,7 +199,7 @@ impl DnsCacheManager {
         Self {
             dns_cache,
             dest_client,
-            prefetch_thread,
+            _prefetch_thread: prefetch_thread,
         }
     }
 
